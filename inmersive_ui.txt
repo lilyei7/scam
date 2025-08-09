@@ -1,0 +1,170 @@
+            {/* Modo inmersivo de verificación facial */}
+            {(getVerificationStatus() === 'success' || getVerificationStatus() === 'warning' || isAutoDetecting || visualDetectionActive) && (
+              <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
+                <div className="relative w-full h-full">
+                  {/* Video de pantalla completa */}
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                    onClick={async () => {
+                      // Permitir que el usuario active el video tocándolo
+                      if (videoRef.current && videoRef.current.paused) {
+                        try {
+                          await videoRef.current.play();
+                          updateVerificationResult('success', '✅ Video activado por el usuario');
+                          if (!visualDetectionActive && !isAutoDetecting) {
+                            setTimeout(() => {
+                              setVisualDetectionActive(true);
+                            }, 1000);
+                          }
+                        } catch (error) {
+                          console.error('Error al reproducir video:', error);
+                        }
+                      }
+                    }}
+                  />
+                  
+                  {/* Overlay transparente con información */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/40 pointer-events-none"></div>
+                  
+                  {/* Componente de detección visual superpuesto */}
+                  <div className="absolute inset-0">
+                    <VisualFaceDetection
+                      videoRef={videoRef}
+                      onFaceDetected={handleVisualFaceDetected}
+                      onQualityChange={handleQualityChange}
+                      isActive={visualDetectionActive}
+                    />
+                  </div>
+                  
+                  {/* Header con información */}
+                  <div className="absolute top-0 left-0 right-0 p-4 text-white z-10">
+                    <div className="text-center">
+                      <h3 className="text-xl font-bold mb-1">Verificación Facial</h3>
+                      <p className="text-sm opacity-90">{getVerificationMessage()}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Indicador de calidad en tiempo real */}
+                  {detectionQuality > 0 && (
+                    <div className="absolute top-16 right-4 z-10">
+                      <div className="bg-black/50 rounded-lg p-2 text-white text-xs">
+                        <div className="mb-1">Calidad: {Math.round(detectionQuality)}%</div>
+                        <div className="w-12 bg-gray-700 rounded-full h-1">
+                          <div 
+                            className={`h-1 rounded-full transition-all ${
+                              detectionQuality > 80 ? 'bg-green-500' : 
+                              detectionQuality > 60 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${detectionQuality}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Botón de cerrar */}
+                  <div className="absolute top-4 right-4 z-10">
+                    <button
+                      onClick={() => {
+                        setVisualDetectionActive(false);
+                        setIsAutoDetecting(false);
+                        updateVerificationResult('idle', 'Verificación cancelada');
+                      }}
+                      className="bg-red-600/80 hover:bg-red-700 text-white p-2 rounded-full transition-colors text-sm"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  {/* Footer con instrucciones */}
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white z-10">
+                    <div className="text-center">
+                      <p className="text-sm mb-2">Colócate en un lugar bien iluminado</p>
+                      <div className="flex justify-center space-x-3 text-xs">
+                        <div className="bg-black/50 rounded px-2 py-1">💡 Buena luz</div>
+                        <div className="bg-black/50 rounded px-2 py-1">👤 Mira al centro</div>
+                        <div className="bg-black/50 rounded px-2 py-1">📱 Mantén estable</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Botón de activar video si está en warning */}
+                  {getVerificationStatus() === 'warning' && getVerificationMessage().includes('Toca') && (
+                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-20">
+                      <div className="text-center text-white">
+                        <div className="text-6xl mb-4">🎥</div>
+                        <p className="text-2xl font-semibold mb-2">Cámara Lista</p>
+                        <p className="text-lg opacity-75 mb-6">Toca para comenzar la verificación</p>
+                        <button
+                          onClick={async () => {
+                            if (videoRef.current) {
+                              try {
+                                await videoRef.current.play();
+                                updateVerificationResult('success', '✅ Video activado correctamente');
+                                setTimeout(() => {
+                                  setVisualDetectionActive(true);
+                                }, 1000);
+                              } catch (error) {
+                                console.error('Error al reproducir video:', error);
+                                updateVerificationResult('warning', '⚡ Intenta tocar el video directamente');
+                              }
+                            }
+                          }}
+                          className="bg-white text-black px-8 py-4 rounded-xl font-bold shadow-lg hover:bg-gray-100 transition-colors text-lg"
+                        >
+                          ▶️ Iniciar Verificación
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Vista normal cuando no está en verificación */}
+            {!(getVerificationStatus() === 'success' || getVerificationStatus() === 'warning' || isAutoDetecting || visualDetectionActive) && (
+              <div className="text-center mb-6">
+                <div className="relative inline-block">
+                  {/* Estado de procesamiento */}
+                  {getVerificationStatus() === 'processing' && (
+                    <div className="w-80 h-60 bg-gray-900 border-2 border-blue-400 rounded-lg flex items-center justify-center">
+                      <div className="text-center text-white">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                        <p className="text-lg font-semibold mb-2">Iniciando cámara...</p>
+                        <p className="text-sm opacity-75">{getVerificationMessage()}</p>
+                        <div className="mt-4 bg-gray-800 rounded-lg px-4 py-2">
+                          <div className="flex items-center justify-center space-x-2">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Placeholder cuando la cámara no está activa */}
+                  {(getVerificationStatus() === 'idle' || getVerificationStatus() === 'error') && (
+                    <div className="w-80 h-60 bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="text-6xl mb-3">📷</div>
+                        <p className="text-gray-700 mb-4 font-semibold">Verificación de Identidad</p>
+                        <button
+                          onClick={startCamera}
+                          className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-semibold shadow-lg"
+                        >
+                          🎥 Iniciar Verificación Facial
+                        </button>
+                        <p className="text-xs text-gray-500 mt-3">
+                          Experiencia inmersiva en pantalla completa
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}

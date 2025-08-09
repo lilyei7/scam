@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso a Cámara - Fallback</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 600px;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        video {
+            width: 100%;
+            max-width: 400px;
+            height: 300px;
+            background: #000;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #0056CC;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .error {
+            color: #ff3333;
+            margin: 10px 0;
+            padding: 10px;
+            background: #ffe6e6;
+            border-radius: 6px;
+        }
+        
+        .success {
+            color: #008000;
+            margin: 10px 0;
+            padding: 10px;
+            background: #e6ffe6;
+            border-radius: 6px;
+        }
+        
+        .instructions {
+            text-align: left;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .browser-specific {
+            margin: 15px 0;
+            padding: 10px;
+            border-left: 4px solid #007AFF;
+            background: #f0f8ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Acceso a Cámara</h1>
+        <p>Este es un método alternativo para acceder a tu cámara en navegadores con restricciones.</p>
+        
+        <video id="video" autoplay playsinline muted></video>
+        
+        <div>
+            <button id="startCamera">📷 Iniciar Cámara</button>
+            <button id="switchCamera" disabled>🔄 Cambiar Cámara</button>
+            <button id="takePhoto" disabled>📸 Tomar Foto</button>
+        </div>
+        
+        <div id="status"></div>
+        
+        <div class="instructions">
+            <h3>📱 Instrucciones por navegador:</h3>
+            
+            <div class="browser-specific">
+                <strong>🍎 Safari (iOS/Mac):</strong>
+                <ul>
+                    <li>Permite acceso cuando aparezca el mensaje</li>
+                    <li>Si no aparece: Configuración → Safari → Cámara → Permitir</li>
+                    <li>Asegúrate de estar en HTTPS o localhost</li>
+                </ul>
+            </div>
+            
+            <div class="browser-specific">
+                <strong>🟢 Chrome:</strong>
+                <ul>
+                    <li>Haz clic en el ícono de cámara 📷 en la barra de direcciones</li>
+                    <li>Selecciona "Permitir"</li>
+                </ul>
+            </div>
+            
+            <div class="browser-specific">
+                <strong>🦊 Firefox:</strong>
+                <ul>
+                    <li>Haz clic en el ícono de escudo si aparece</li>
+                    <li>Permite el acceso a la cámara</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let video = document.getElementById('video');
+        let startBtn = document.getElementById('startCamera');
+        let switchBtn = document.getElementById('switchCamera');
+        let photoBtn = document.getElementById('takePhoto');
+        let status = document.getElementById('status');
+        let currentStream = null;
+        let facingMode = 'user';
+        
+        function showStatus(message, type = 'info') {
+            status.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+        
+        function getBrowserInfo() {
+            const userAgent = navigator.userAgent.toLowerCase();
+            if (userAgent.includes('safari') && !userAgent.includes('chrome')) {
+                return 'Safari';
+            } else if (userAgent.includes('chrome')) {
+                return 'Chrome';
+            } else if (userAgent.includes('firefox')) {
+                return 'Firefox';
+            } else if (userAgent.includes('edge')) {
+                return 'Edge';
+            }
+            return 'Desconocido';
+        }
+        
+        async function getAvailableDevices() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                console.log('Dispositivos disponibles:', videoDevices);
+                return videoDevices;
+            } catch (error) {
+                console.warn('No se pudo enumerar dispositivos:', error);
+                return [];
+            }
+        }
+        
+        async function startCamera(constraints = null) {
+            try {
+                showStatus('🔄 Iniciando cámara...', 'info');
+                
+                // Detener stream anterior si existe
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Configuración por defecto
+                if (!constraints) {
+                    constraints = {
+                        video: {
+                            facingMode: facingMode,
+                            width: { ideal: 640, min: 320 },
+                            height: { ideal: 480, min: 240 }
+                        },
+                        audio: false
+                    };
+                }
+                
+                // Intentar acceso a cámara
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                
+                // Configurar video para Safari
+                video.setAttribute('playsinline', true);
+                video.setAttribute('webkit-playsinline', true);
+                
+                await video.play();
+                
+                showStatus(`✅ Cámara iniciada correctamente en ${getBrowserInfo()}`, 'success');
+                
+                // Habilitar botones
+                switchBtn.disabled = false;
+                photoBtn.disabled = false;
+                startBtn.textContent = '🔄 Reiniciar Cámara';
+                
+                // Enviar confirmación al parent (si está en iframe)
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'camera-success',
+                        browser: getBrowserInfo()
+                    }, '*');
+                }
+                
+            } catch (error) {
+                console.error('Error accediendo a cámara:', error);
+                
+                let errorMessage = 'Error desconocido';
+                if (error.name === 'NotAllowedError') {
+                    errorMessage = '🚫 Permisos denegados. Permite el acceso a la cámara en la configuración de tu navegador.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = '📷 No se encontró cámara en tu dispositivo.';
+                } else if (error.name === 'NotSupportedError') {
+                    errorMessage = '❌ Tu navegador no soporta acceso a cámara.';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = '⚠️ La cámara está siendo usada por otra aplicación.';
+                }
+                
+                showStatus(errorMessage, 'error');
+                
+                // Enviar error al parent
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'camera-error',
+                        error: errorMessage,
+                        browser: getBrowserInfo()
+                    }, '*');
+                }
+            }
+        }
+        
+        function switchCamera() {
+            facingMode = facingMode === 'user' ? 'environment' : 'user';
+            startCamera();
+        }
+        
+        function takePhoto() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            // Convertir a blob
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                
+                // Enviar foto al parent
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'photo-captured',
+                        photoUrl: url,
+                        photoBlob: blob
+                    }, '*');
+                }
+                
+                showStatus('📸 Foto capturada correctamente', 'success');
+            }, 'image/jpeg', 0.8);
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', () => startCamera());
+        switchBtn.addEventListener('click', switchCamera);
+        photoBtn.addEventListener('click', takePhoto);
+        
+        // Auto-iniciar para Safari (necesita interacción del usuario)
+        window.addEventListener('load', () => {
+            showStatus(`🌐 Navegador detectado: ${getBrowserInfo()}`, 'info');
+            
+            // Mostrar dispositivos disponibles
+            getAvailableDevices().then(devices => {
+                if (devices.length > 1) {
+                    switchBtn.style.display = 'inline-block';
+                }
+            });
+        });
+        
+        // Escuchar mensajes del parent
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'start-camera') {
+                startCamera();
+            }
+        });
+    </script>
+</body>
+</html>

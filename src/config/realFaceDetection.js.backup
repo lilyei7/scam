@@ -1,0 +1,530 @@
+// Configuración para detección facial real usando Face-api.js (compatible con todos los navegadores)
+export const REAL_FACE_CONFIG = {
+  // URLs de modelos con fallbacks para diferentes CDNs
+  MODEL_URLS: [
+    'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights',
+    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights',
+    'https://unpkg.com/face-api.js@0.22.2/weights'
+  ],
+  
+  // Face-api.js configuración optimizada por navegador
+  FACE_API: {
+    // Configuración por defecto
+    DEFAULT: {
+      CONFIDENCE_THRESHOLD: 0.3,
+      INPUT_SIZE: 320,
+      SCORE_THRESHOLD: 0.3,
+      MAX_RESULTS: 5
+    },
+    // Configuración específica para Safari/iOS
+    SAFARI: {
+      CONFIDENCE_THRESHOLD: 0.4,
+      INPUT_SIZE: 224,
+      SCORE_THRESHOLD: 0.4,
+      MAX_RESULTS: 3
+    },
+    // Configuración para Firefox
+    FIREFOX: {
+      CONFIDENCE_THRESHOLD: 0.35,
+      INPUT_SIZE: 288,
+      SCORE_THRESHOLD: 0.35,
+      MAX_RESULTS: 4
+    },
+    // Configuración para dispositivos móviles
+    MOBILE: {
+      CONFIDENCE_THRESHOLD: 0.5,
+      INPUT_SIZE: 192,
+      SCORE_THRESHOLD: 0.5,
+      MAX_RESULTS: 2
+    }
+  },
+  
+  // Configuración de cámara optimizada por dispositivo
+  CAMERA_CONFIG: {
+    DESKTOP: {
+      width: { ideal: 640, min: 320 },
+      height: { ideal: 480, min: 240 },
+      facingMode: 'user',
+      frameRate: { ideal: 20, max: 30 }
+    },
+    MOBILE: {
+      width: { ideal: 480, min: 240 },
+      height: { ideal: 360, min: 180 },
+      facingMode: 'user',
+      frameRate: { ideal: 15, max: 24 }
+    }
+  },
+  
+  // Configuración de análisis de calidad más permisiva
+  QUALITY_CONFIG: {
+    MIN_FACE_SIZE: 0.05, // 5% del área de imagen mínimo
+    MAX_FACE_SIZE: 0.6,  // 60% del área de imagen máximo
+    MIN_QUALITY_SCORE: 40, // Reducido de 50 a 40 para mayor compatibilidad
+    CENTER_TOLERANCE: 120  // Mayor tolerancia para centrado
+  }
+};
+
+// Función para obtener configuración específica del navegador
+export const getBrowserSpecificConfig = () => {
+  const userAgent = navigator.userAgent.toLowerCase();
+  const isSafari = /safari/.test(userAgent) && !/chrome/.test(userAgent);
+  const isFirefox = /firefox/.test(userAgent);
+  const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+  
+  let config;
+  
+  if (isMobile) {
+    config = REAL_FACE_CONFIG.FACE_API.MOBILE;
+  } else if (isSafari) {
+    config = REAL_FACE_CONFIG.FACE_API.SAFARI;
+  } else if (isFirefox) {
+    config = REAL_FACE_CONFIG.FACE_API.FIREFOX;
+  } else {
+    config = REAL_FACE_CONFIG.FACE_API.DEFAULT;
+  }
+  
+  return {
+    ...config,
+    browserType: isSafari ? 'Safari' : isFirefox ? 'Firefox' : 'Chromium',
+    isMobile,
+    cameraConfig: isMobile ? 
+      REAL_FACE_CONFIG.CAMERA_CONFIG.MOBILE : 
+      REAL_FACE_CONFIG.CAMERA_CONFIG.DESKTOP
+  };
+};
+
+// Estado de carga de modelos
+let modelsLoaded = false;
+let faceApiInstance = null;
+
+// Función para cargar Face-api.js y sus modelos con soporte universal
+export const initializeFaceAPI = async () => {
+  if (typeof window === 'undefined') return false;
+  
+  try {
+    console.log('🔄 Inicializando Face-api.js universal...');
+    
+    // Detectar navegador y dispositivo
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isSafari = /safari/.test(userAgent) && !/chrome/.test(userAgent);
+    const isFirefox = /firefox/.test(userAgent);
+    const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    
+    console.log(`🌐 Navegador: ${isSafari ? 'Safari' : isFirefox ? 'Firefox' : 'Chromium'}, Móvil: ${isMobile}`);
+    
+    // Importar face-api.js dinámicamente
+    if (!faceApiInstance) {
+      const faceapi = await import('face-api.js');
+      faceApiInstance = faceapi;
+      window.faceapi = faceapi;
+    }
+    
+    if (!modelsLoaded) {
+      console.log('📦 Cargando modelos Face-api.js...');
+      
+      // Intentar cargar modelos desde múltiples CDNs
+      let modelLoadSuccess = false;
+      
+      for (const modelUrl of REAL_FACE_CONFIG.MODEL_URLS) {
+        try {
+          console.log(`� Intentando cargar desde: ${modelUrl}`);
+          
+          // Cargar modelos básicos requeridos
+          await Promise.all([
+            faceApiInstance.nets.tinyFaceDetector.loadFromUri(modelUrl),
+            faceApiInstance.nets.ssdMobilenetv1.loadFromUri(modelUrl),
+            faceApiInstance.nets.faceLandmark68TinyNet.loadFromUri(modelUrl),
+            faceApiInstance.nets.faceRecognitionNet.loadFromUri(modelUrl)
+          ]);
+          
+          modelLoadSuccess = true;
+          console.log(`✅ Modelos cargados exitosamente desde: ${modelUrl}`);
+          break;
+          
+        } catch (error) {
+          console.warn(`⚠️ Error cargando desde ${modelUrl}:`, error);
+          continue;
+        }
+      }
+      
+      if (!modelLoadSuccess) {
+        throw new Error('No se pudieron cargar los modelos de Face-api.js desde ningún CDN');
+      }
+      
+      modelsLoaded = true;
+      console.log('✅ Todos los modelos de Face-api.js cargados correctamente');
+    }
+    
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Error inicializando Face-api.js:', error);
+    return false;
+  }
+};
+
+// Función principal para detectar rostros en tiempo real (optimizada por navegador)
+export const detectFaceInVideo = async (videoElement) => {
+  if (!videoElement || !faceApiInstance || !modelsLoaded) {
+    return { success: false, message: 'Video o Face-api no disponible' };
+  }
+  
+  try {
+    // Verificar que el video esté reproduciendo
+    if (videoElement.readyState < 2) {
+      return { success: false, message: 'Video no está listo' };
+    }
+
+    // Obtener configuración específica del navegador
+    const browserConfig = getBrowserSpecificConfig();
+    console.log(`🔧 Usando configuración para ${browserConfig.browserType}`);
+
+    let detections = null;
+    
+    // Intentar con TinyFaceDetector primero (más rápido)
+    try {
+      detections = await faceApiInstance
+        .detectAllFaces(videoElement, new faceApiInstance.TinyFaceDetectorOptions({
+          inputSize: browserConfig.INPUT_SIZE,
+          scoreThreshold: browserConfig.SCORE_THRESHOLD
+        }));
+    } catch (tinyError) {
+      console.log('TinyFaceDetector falló, intentando con SSD...');
+      
+      // Fallback a SSD MobileNet
+      try {
+        detections = await faceApiInstance
+          .detectAllFaces(videoElement, new faceApiInstance.SsdMobilenetv1Options({
+            minConfidence: browserConfig.CONFIDENCE_THRESHOLD,
+            maxResults: browserConfig.MAX_RESULTS
+          }));
+      } catch (ssdError) {
+        console.log('SSD también falló');
+      }
+    }
+    
+    if (detections && detections.length > 0) {
+      const detection = detections[0]; // Tomar el primer rostro detectado
+      
+      // Intentar obtener landmarks y descriptores (opcional)
+      let landmarks = null;
+      let descriptor = null;
+      
+      try {
+        const detectionWithLandmarks = await faceApiInstance
+          .detectSingleFace(videoElement, new faceApiInstance.TinyFaceDetectorOptions())
+          .withFaceLandmarks();
+        
+        if (detectionWithLandmarks) {
+          landmarks = detectionWithLandmarks.landmarks ? detectionWithLandmarks.landmarks.positions : null;
+          
+          // Intentar obtener descriptor
+          const detectionWithDescriptor = await detectionWithLandmarks.withFaceDescriptor();
+          if (detectionWithDescriptor) {
+            descriptor = Array.from(detectionWithDescriptor.descriptor);
+          }
+        }
+      } catch (landmarkError) {
+        console.log('No se pudieron obtener landmarks, pero la detección básica funciona');
+      }
+      
+      const confidence = detection.score || detection.detection?.score || 0.8;
+      const box = detection.box || detection.detection?.box || detection;
+      
+      return {
+        success: true,
+        faceDetected: true,
+        confidence: confidence,
+        boundingBox: {
+          x: box.x || box._x || 0,
+          y: box.y || box._y || 0,
+          width: box.width || box._width || 100,
+          height: box.height || box._height || 100
+        },
+        landmarks: landmarks,
+        descriptor: descriptor,
+        timestamp: new Date().toISOString(),
+        detectorUsed: detection.score ? 'TinyFaceDetector' : 'SsdMobilenetv1'
+      };
+    }
+    
+    return {
+      success: true,
+      faceDetected: false,
+      message: 'No se detectaron rostros',
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    console.error('Error detectando rostro:', error);
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+};
+
+// Función para capturar y guardar datos faciales
+export const captureFaceData = async (videoElement, userId, purpose = 'registration') => {
+  try {
+    // Detectar rostro en el video
+    const detection = await detectFaceInVideo(videoElement);
+    
+    if (!detection.success || !detection.faceDetected) {
+      return {
+        success: false,
+        message: 'No se pudo detectar un rostro válido'
+      };
+    }
+    
+    // Crear canvas para capturar la imagen
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    ctx.drawImage(videoElement, 0, 0);
+    
+    // Convertir a blob para almacenamiento
+    const imageBlob = await new Promise(resolve => 
+      canvas.toBlob(resolve, 'image/jpeg', 0.9)
+    );
+    
+    // Convertir blob a base64 para almacenamiento
+    const imageBase64 = await blobToBase64(imageBlob);
+    
+    // Preparar datos faciales completos
+    const faceData = {
+      userId,
+      purpose,
+      image: imageBase64,
+      confidence: detection.confidence,
+      boundingBox: detection.boundingBox,
+      landmarks: detection.landmarks,
+      descriptor: detection.descriptor, // Para comparación facial
+      metadata: {
+        captureTime: new Date().toISOString(),
+        videoWidth: videoElement.videoWidth,
+        videoHeight: videoElement.videoHeight,
+        browser: navigator.userAgent,
+        devicePixelRatio: window.devicePixelRatio
+      }
+    };
+    
+    // Guardar datos faciales
+    const saveResult = await saveFaceDataToStorage(faceData);
+    
+    return {
+      success: true,
+      faceData,
+      storageKey: saveResult.storageKey,
+      message: 'Rostro capturado y guardado exitosamente'
+    };
+    
+  } catch (error) {
+    console.error('Error capturando datos faciales:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// Función para guardar datos faciales (localStorage + envío a servidor)
+export const saveFaceDataToStorage = async (faceData) => {
+  try {
+    const storageKey = `face_${faceData.userId}_${faceData.purpose}_${Date.now()}`;
+    
+    // Guardar en localStorage
+    localStorage.setItem(storageKey, JSON.stringify(faceData));
+    
+    // En producción, enviar al servidor
+    try {
+      const response = await fetch('/api/save-face-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(faceData)
+      });
+      
+      if (response.ok) {
+        console.log('✅ Datos faciales enviados al servidor');
+      }
+    } catch (serverError) {
+      console.log('⚠️ No se pudo enviar al servidor, datos guardados localmente');
+    }
+    
+    return {
+      success: true,
+      storageKey,
+      timestamp: faceData.metadata.captureTime
+    };
+    
+  } catch (error) {
+    console.error('Error guardando datos faciales:', error);
+    throw error;
+  }
+};
+
+// Función para comparar rostros (registro vs INE)
+export const compareFaceData = async (registrationFaceData, ineFaceData) => {
+  try {
+    if (!registrationFaceData.descriptor || !ineFaceData.descriptor) {
+      return {
+        success: false,
+        message: 'Faltan descriptores faciales para la comparación'
+      };
+    }
+    
+    // Convertir descriptores a Float32Array
+    const descriptor1 = new Float32Array(registrationFaceData.descriptor);
+    const descriptor2 = new Float32Array(ineFaceData.descriptor);
+    
+    // Calcular distancia euclidiana usando Face-api.js
+    const distance = faceApiInstance.euclideanDistance(descriptor1, descriptor2);
+    
+    // Convertir distancia a porcentaje de similitud
+    const similarity = Math.max(0, (1 - distance)) * 100;
+    
+    // Determinar si es la misma persona (umbral del 65%)
+    const isMatch = similarity >= 65;
+    
+    const result = {
+      success: true,
+      similarity: similarity,
+      isMatch: isMatch,
+      confidence: similarity / 100,
+      threshold: 65,
+      distance: distance,
+      comparisonTime: new Date().toISOString(),
+      details: {
+        registrationTime: registrationFaceData.metadata.captureTime,
+        ineTime: ineFaceData.metadata.captureTime,
+        method: 'face-api-euclidean-distance'
+      }
+    };
+    
+    // Guardar resultado de comparación
+    const comparisonKey = `comparison_${Date.now()}`;
+    localStorage.setItem(comparisonKey, JSON.stringify(result));
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Error comparando rostros:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// Función para obtener datos faciales guardados
+export const getFaceData = (userId, purpose) => {
+  try {
+    const keys = Object.keys(localStorage).filter(key => 
+      key.includes(`face_${userId}_${purpose}`)
+    );
+    
+    if (keys.length === 0) {
+      return null;
+    }
+    
+    // Obtener el más reciente
+    const latestKey = keys.sort().reverse()[0];
+    const data = localStorage.getItem(latestKey);
+    
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error('Error obteniendo datos faciales:', error);
+    return null;
+  }
+};
+
+// Función auxiliar para convertir blob a base64
+const blobToBase64 = (blob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
+// Función para verificar si Face-api.js está listo
+export const isFaceAPIReady = () => {
+  return modelsLoaded && faceApiInstance !== null;
+};
+
+// Función para análisis de calidad de imagen facial (más permisiva)
+export const analyzeFaceQuality = (detection) => {
+  const quality = {
+    score: 0,
+    issues: [],
+    recommendations: []
+  };
+  
+  // Verificar confianza de detección (más permisivo)
+  if (detection.confidence < 0.4) {
+    quality.issues.push('Confianza de detección baja');
+    quality.recommendations.push('Mejore la iluminación y posicionamiento');
+  } else if (detection.confidence >= 0.4) {
+    quality.score += 30; // Aumentado el puntaje base
+  }
+  
+  // Verificar tamaño del rostro (más tolerante)
+  const faceArea = detection.boundingBox.width * detection.boundingBox.height;
+  const imageArea = 640 * 480; // Área estimada del video
+  const faceRatio = faceArea / imageArea;
+  
+  if (faceRatio < REAL_FACE_CONFIG.QUALITY_CONFIG.MIN_FACE_SIZE) {
+    quality.issues.push('Rostro muy pequeño');
+    quality.recommendations.push('Acérquese más a la cámara');
+    quality.score += 10; // Dar puntos parciales
+  } else if (faceRatio > REAL_FACE_CONFIG.QUALITY_CONFIG.MAX_FACE_SIZE) {
+    quality.issues.push('Rostro muy grande');
+    quality.recommendations.push('Aléjese un poco de la cámara');
+    quality.score += 15; // Dar puntos parciales
+  } else {
+    quality.score += 30;
+  }
+  
+  // Verificar centrado (más tolerante)
+  const centerX = detection.boundingBox.x + detection.boundingBox.width / 2;
+  const centerY = detection.boundingBox.y + detection.boundingBox.height / 2;
+  const videoCenterX = 320; // 640/2
+  const videoCenterY = 240; // 480/2
+  
+  const offsetX = Math.abs(centerX - videoCenterX);
+  const offsetY = Math.abs(centerY - videoCenterY);
+  
+  if (offsetX < REAL_FACE_CONFIG.QUALITY_CONFIG.CENTER_TOLERANCE && 
+      offsetY < REAL_FACE_CONFIG.QUALITY_CONFIG.CENTER_TOLERANCE) {
+    quality.score += 20;
+  } else {
+    quality.issues.push('Rostro no centrado');
+    quality.recommendations.push('Centre su rostro en la imagen');
+    quality.score += 10; // Puntos parciales por estar detectado
+  }
+  
+  // Verificar landmarks (opcional, no penalizar si faltan)
+  if (detection.landmarks && detection.landmarks.length > 0) {
+    quality.score += 20;
+  } else {
+    // No penalizar, solo sugerir
+    quality.recommendations.push('Para mejor precisión, mire directamente a la cámara');
+    quality.score += 15; // Puntos base por tener rostro detectado
+  }
+  
+  // Bonus por tener descriptor facial
+  if (detection.descriptor) {
+    quality.score += 10;
+  }
+  
+  // Asegurar que el puntaje esté entre 0 y 100
+  quality.score = Math.min(100, Math.max(0, quality.score));
+  
+  return quality;
+};
